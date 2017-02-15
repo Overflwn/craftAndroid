@@ -1,0 +1,406 @@
+--[[
+    This OS will be used for pocket computers
+
+    It will have a built-in package installer. (--> you can install packages via
+    some filebrowser, which executes a global command to start up the package
+    installer)
+
+    This may or may not get finished... Will be fun to do tho :)
+
+    ~Piorjade
+]]
+--APIs
+--these are essential and will crash the system if they don't exist!
+
+--variables
+local _ver = 0.1
+local _verstr = tostring(_ver)
+local maxX, maxY = term.getSize()
+local logo = paintutils.loadImage("/sys/caBackground")
+if not logo then
+  cLinuxPrintError("CraftAndroid",  "/sys/caBackground not found!")
+  print(2)
+  _flag("STATE_DEAD", true)
+end
+local logoX, logoY = 8, 7
+local btnx = math.floor(maxX/3)
+local space = math.floor((maxX-(btnx*3))/2)
+local _crashed = false
+--Initialize main windows
+local originalTerm, mainTerm, crashWindow
+originalTerm = term.current()
+mainTerm = window.create(originalTerm, 1, 1, maxX, maxY)
+crashWindow = window.create(mainTerm, math.floor(maxX/2-12), math.floor(maxY/2-1), 26, 3, false)
+crashWindow.setBackgroundColor(colors.white)
+crashWindow.setTextColor(colors.lightBlue)
+crashWindow.clear()
+local x, y = crashWindow.getSize()
+crashWindow.setCursorPos(math.floor(x/2-1), 3)
+crashWindow.setBackgroundColor(colors.lime)
+crashWindow.setTextColor(colors.white)
+crashWindow.write(" OK ")
+crashWindow.setBackgroundColor(colors.white)
+crashWindow.setTextColor(colors.lightBlue)
+
+local function displayError(name)
+  local curTerm = term.current()
+  crashWindow.setVisible(true)
+  crashWindow.setCursorPos(2, 2)
+  crashWindow.write(tostring(name).." crashed.")
+  _crashed = true
+  local ev, btn, x, y
+  repeat
+    ev, btn, x, y = os.pullEvent("mouse_click")
+  until btn == 1 and x >= math.floor(maxX/2-1) and x <= math.floor(maxX/2+2) and y == math.floor(maxY/2-1)+2
+  crashWindow.setBackgroundColor(colors.white)
+  crashWindow.setTextColor(colors.lightBlue)
+  crashWindow.clear()
+  local x, y = crashWindow.getSize()
+  crashWindow.setCursorPos(math.floor(x/2-1), 3)
+  crashWindow.setBackgroundColor(colors.lime)
+  crashWindow.setTextColor(colors.white)
+  crashWindow.write(" OK ")
+  crashWindow.setBackgroundColor(colors.white)
+  crashWindow.setTextColor(colors.lightBlue)
+  crashWindow.setVisible(false)
+  curTerm.redraw()
+  _crashed = false
+end
+
+
+
+--The toolbar at the bottom, this should not be able to be deleted, the
+--backbutton WILL queue an event instead of being handled directly, as
+--apps should be able to use it.
+--The homebutton and tasklist button will be handled directly by the OS
+local toolBar, backButton, homeButton, taskListBtn
+local backBtnStr = string.char(17).."-" --backbutton icon
+local homeBtnStr = string.char(136)..string.char(132) --hombutton icon
+local tlBtnStr = "O°" --tasklist button icon
+
+local craftAndroid = {} --This will contain the craftAndroid API ready to be used by apps
+
+craftAndroid.displayCrash = displayError --put it to be usable
+
+craftAndroid.taskmanager = {
+  tasklist = {}
+}
+
+local function turnInvisible()
+  for each, task in pairs(craftAndroid.taskmanager.tasklist) do
+    if task.isVisible then
+      craftAndroid.taskmanager.tasklist[each].setVisible(false)
+    end
+  end
+end
+
+local function addApp(appName, visible)
+  local list = lib.candroid.package.list()
+  if not list[appName] then
+    return false, "app does not exist"
+  else
+    if not fs.exists("/craftAndroid/apps/"..appName.."/startup") then
+      return false, "startup not found"
+    end
+    local prog, err = loadfile("/craftAndroid/apps/"..appName.."/startup")
+    if not prog then return false, err end
+    local env = {}
+    for each, val in pairs(_G) do
+      env[each] = val
+    end
+    setmetatable(env, {__index = _G})
+    env._G = env
+    local self = {}
+    self.window = window.create(mainTerm, 1, 1, maxX, maxY-1)
+    self.dead = false
+    env.term.native = function()
+      return self.window
+    end
+    env.app = {
+      exit = function()
+        term.redirect(originalTerm)
+        self.dead = true
+        self.coroutine = nil
+      end
+    }
+    setfenv(prog, env)
+    self.coroutine = coroutine.create(prog)
+    self.filter = ""
+    self.type = list[appName].type
+    self.isVisible = visible
+    if self.isVisible then
+      turnInvisible()
+    end
+    self.setVisible = function(bool)
+      self.isVisible = bool
+      self.window.setVisible(bool)
+    end
+    self.kill = function()
+      if self.type == "system" then
+        return false, "noPrivileges"
+      else
+        self.dead = true
+      end
+    end
+    self.resume = function(args)
+      if args[1] == self.filter or filter == nil or filter == "" then
+        term.redirect(self.window)
+        local _, ok, fltr = pcall(coroutine.resume, self.coroutine, unpack(args))
+        if not _ or not ok then
+          lib.candroid.notification.notify("app_crash", self.name)
+          term.redirect(originalTerm)
+          self.dead = true
+          return false, (ok or fltr)
+        else
+          self.filter = fltr
+          if self.coroutine and coroutine.status(self.coroutine) == "dead" then
+            self.dead = true
+          elseif not self.coroutine then
+            self.dead = true
+          end
+        end
+      end
+    end
+    return self
+  end
+end
+
+function craftAndroid.taskmanager.runApp(appName, visible)
+  if not craftAndroid.taskmanager.tasklist[appName] then
+    if visible == nil or type(visible) ~= "boolean" then visible = true end
+    local t, err = addApp(appName, visible)
+    if not t then return false, err end
+    craftAndroid.taskmanager.tasklist[appName] = t
+    return true
+  else
+    turnInvisible()
+    craftAndroid.taskmanager.tasklist[appName].setVisible(true)
+    return true
+  end
+end
+
+
+--functions
+
+local function clearScreen(bg, fg)
+  term.setCursorPos(1,1)
+  term.setBackgroundColor(bg)
+  term.setTextColor(fg)
+  term.clear()
+end
+
+local function killAll()
+  craftAndroid.taskmanager.tasklist = {}
+end
+
+local function setHomeToMain(name)
+  turnInvisible()
+  --craftAndroid.taskmanager.tasklist[name].setVisible(true)
+  craftAndroid.taskmanager.tasklist[name] = nil
+  craftAndroid.taskmanager.runApp(name)
+end
+
+
+
+local function initiateOS()
+  lib.perm.permission.login("candroid", "candroid")
+  clearScreen(colors.black, colors.white)
+  paintutils.drawImage(logo, math.floor((maxX/2)-(logoX/2)), math.floor((maxY/2)-(logoY/2)))
+  sleep(2)
+  toolBar = window.create(mainTerm, 1, maxY, maxX, 1)
+  toolBar.setBackgroundColor(colors.black)
+  toolBar.setTextColor(colors.white)
+  toolBar.clear()
+  local x, y
+  backButton = {}
+  backButton.window = window.create(toolBar, 1, 1, btnx, 1)
+  x, y = backButton.window.getSize()
+  backButton.window.setCursorPos(math.floor(x/2),1)
+  backButton.window.setBackgroundColor(colors.black)
+  backButton.window.setTextColor(colors.white)
+  backButton.window.clear()
+  backButton.window.write(backBtnStr)
+  function backButton.click()
+    local x, y = backButton.window.getSize()
+    backButton.window.setCursorPos(math.floor(x/2),1)
+    backButton.window.setBackgroundColor(colors.white)
+    backButton.window.setTextColor(colors.black)
+    backButton.window.clear()
+    backButton.window.write(backBtnStr)
+    sleep(0.125)
+    backButton.window.setCursorPos(math.floor(x/2),1)
+    backButton.window.setBackgroundColor(colors.black)
+    backButton.window.setTextColor(colors.white)
+    backButton.window.clear()
+    backButton.window.write(backBtnStr)
+  end
+  homeButton = {}
+  homeButton.window = window.create(toolBar, btnx+space+1, 1, btnx, 1)
+  x, y = homeButton.window.getSize()
+  homeButton.window.setCursorPos(math.floor(x/2),1)
+  homeButton.window.setBackgroundColor(colors.black)
+  homeButton.window.setTextColor(colors.white)
+  homeButton.window.clear()
+  homeButton.window.write(homeBtnStr)
+  function homeButton.click()
+    local x, y = homeButton.window.getSize()
+    homeButton.window.setCursorPos(math.floor(x/2),1)
+    homeButton.window.setBackgroundColor(colors.white)
+    homeButton.window.setTextColor(colors.black)
+    homeButton.window.clear()
+    homeButton.window.write(homeBtnStr)
+    sleep(0.125)
+    homeButton.window.setCursorPos(math.floor(x/2),1)
+    homeButton.window.setBackgroundColor(colors.black)
+    homeButton.window.setTextColor(colors.white)
+    homeButton.window.clear()
+    homeButton.window.write(homeBtnStr)
+  end
+  taskListBtn = {}
+  taskListBtn.window = window.create(toolBar, (btnx*2)+(space*2)+1, 1, btnx, 1)
+  x, y = taskListBtn.window.getSize()
+  taskListBtn.window.setCursorPos(math.floor(x/2),1)
+  taskListBtn.window.setBackgroundColor(colors.black)
+  taskListBtn.window.setTextColor(colors.white)
+  taskListBtn.window.clear()
+  taskListBtn.window.write(tlBtnStr)
+  function taskListBtn.click()
+    local x, y = taskListBtn.window.getSize()
+    taskListBtn.window.setCursorPos(math.floor(x/2),1)
+    taskListBtn.window.setBackgroundColor(colors.white)
+    taskListBtn.window.setTextColor(colors.black)
+    taskListBtn.window.clear()
+    taskListBtn.window.write(tlBtnStr)
+    sleep(0.125)
+    taskListBtn.window.setCursorPos(math.floor(x/2),1)
+    taskListBtn.window.setBackgroundColor(colors.black)
+    taskListBtn.window.setTextColor(colors.white)
+    taskListBtn.window.clear()
+    taskListBtn.window.write(tlBtnStr)
+  end
+  local launcher, err = lib.candroid.config.get("os", "main", "defaultLauncher")
+  if not launcher then
+    _flag("STATE_CRASHED", "Launcher: "..err)
+  end
+
+  function craftAndroid.goHome()
+    setHomeToMain(launcher)
+  end
+
+
+  _putLib("craftAndroid", craftAndroid)
+
+
+  local ok, err = craftAndroid.taskmanager.runApp(launcher, true)
+  if not ok then
+    _flag("STATE_CRASHED", "Launcher: "..err)
+  end
+  local evt = {}
+
+  while true do
+    local killtab = {}
+    for each, task in pairs(craftAndroid.taskmanager.tasklist) do
+      if not task.dead and task.isVisible then
+        local ok, err = craftAndroid.taskmanager.tasklist[each].resume(evt)
+        if ok == false then
+          if task.type == "system" then
+            printError(err)
+          else
+            os.queueEvent("app_crash", tostring(err))
+            craftAndroid.taskmanager.tasklist[each].dead = true
+            table.insert(killtab, each)
+          end
+        end
+      elseif not task.dead and not task.isVisible then
+        --if the task is in the background, don't pass keyboard and mouse events over
+        local t = {"key", "paste", "terminate", "mouse"}
+        local found = false
+        for each, var in ipairs(t) do
+          if string.find(evt[1], var) then
+            found = true
+            break
+          end
+        end
+        if found and not _crashed then
+          local ok, err = craftAndroid.taskmanager.tasklist[each].resume({})
+          if ok == false then
+            if task.type == "system" then
+              printError(err)
+            end
+          end
+        else
+          local ok, err = craftAndroid.taskmanager.tasklist[each].resume(evt)
+          if ok == false then
+            if task.type == "system" then
+              printError(err)
+            end
+          end
+
+        end
+      else
+        table.insert(killtab, each)
+      end
+    end
+    for each, kill in ipairs(killtab) do
+      craftAndroid.taskmanager.tasklist[kill] = nil
+    end
+    evt = {os.pullEvent()}
+    if evt[1] == "mouse_click" then
+      local btn, x, y = evt[2], evt[3], evt[4]
+      if btn == 1 and x >= 1 and x <= btnx and y == maxY then
+        backButton.click()
+        os.queueEvent("craftAndroid_back")
+      elseif btn == 1 and x >= btnx+space+1 and x <= (btnx*2)+space and y == maxY then
+        homeButton.click()
+        setHomeToMain(launcher)
+      elseif btn == 1 and x >= (btnx*2)+(space*2)+1 and x <= maxX and y == maxY then
+        taskListBtn.click()
+        killAll()
+        break
+      end
+    end
+  end
+end
+
+function craftAndroid.udBackBtn(bg, fg)
+  if bg == nil then bg = backButton.window.getBackgroundColor() end
+  if fg == nil then fg = backButton.window.getTextColor() end
+  local x, y = backButton.window.getSize()
+  backButton.window.setCursorPos(math.floor(x/2),1)
+  backButton.window.setBackgroundColor(bg)
+  backButton.window.setTextColor(fg)
+  backButton.window.clear()
+  backButton.window.write(backBtnStr)
+end
+
+function craftAndroid.udHomeBtn(bg, fg)
+  if bg == nil then bg = homeButton.window.getBackgroundColor() end
+  if fg == nil then fg = homeButton.window.getTextColor() end
+  local x, y = homeButton.window.getSize()
+  homeButton.window.setCursorPos(math.floor(x/2),1)
+  homeButton.window.setBackgroundColor(bg)
+  homeButton.window.setTextColor(fg)
+  homeButton.window.clear()
+  homeButton.window.write(homeBtnStr)
+end
+
+function craftAndroid.udTlBtn(bg, fg)
+  if bg == nil then bg = taskListBtn.window.getBackgroundColor() end
+  if fg == nil then fg = taskListBtn.window.getTextColor() end
+  local x, y = taskListBtn.window.getSize()
+  taskListBtn.window.setCursorPos(math.floor(x/2),1)
+  taskListBtn.window.setBackgroundColor(bg)
+  taskListBtn.window.setTextColor(fg)
+  taskListBtn.window.clear()
+  taskListBtn.window.write(tlBtnStr)
+end
+
+--code
+
+clearScreen(colors.black, colors.white)
+initiateOS()
+originalTerm, mainTerm, toolBar, backButton, homeButton, taskListBtn = nil, nil, nil, nil, nil, nil
+clearScreen(colors.black, colors.white)
+print("Thank you for using craftAndroid ".._verstr.."!")
+print("See you next time :)")
+os.shutdown()

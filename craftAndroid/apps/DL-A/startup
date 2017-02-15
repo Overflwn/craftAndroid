@@ -1,0 +1,64 @@
+--[[
+      The pastebin download Manager
+    Uses the craftOS pastebin program
+
+    ~Piorjade
+]]
+
+local maxX, maxY = term.getSize()
+os.loadAPI("/sys/fsEAPI")
+if not _G.fsEAPI or not fsEAPI then
+  os.queueEvent("app_crash", "fsEAPI not found.")
+  app.exit()
+end
+local items = {}
+fsEAPI.addTextBox(items, "pastebinCode", "Enter PB code", maxX-2, 2, 2)
+fsEAPI.addTextBox(items, "nameBox", "Enter name", maxX-2, 2, 4)
+fsEAPI.addButton(items, "downloadButton", "Download", 8, 2, 6)
+fsEAPI.updateAll(items, colors.white)
+
+local c1 = coroutine.create(fsEAPI.run)
+coroutine.resume(c1, items)
+
+local evt = {}
+while true do
+  coroutine.resume(c1, unpack(evt))
+  evt = {os.pullEvent()}
+  if evt[1] == "button_press" and #items.pastebinCode.text > 2 and #items.nameBox.text > 1 and not string.find(items.nameBox.text, "/") then
+    local response = http.get(
+        "http://pastebin.com/raw/"..textutils.urlEncode(items.pastebinCode.text)
+    )
+    if not response then
+      os.queueEvent("app_crash", "HTTP error")
+      app.exit()
+    end
+    local sResponse = response.readAll()
+    response.close()
+    if not _G.crypto or not crypto then os.loadAPI("/sys/crypto") end
+    local t = {
+      files = {
+        "startup"
+      },
+      folders = {
+
+      },
+      fileData = {
+      },
+      name = "testapp",
+      size = 0,
+      type = "user",
+    }
+    table.insert(t.fileData, sResponse)
+    t = textutils.serialize(t)
+    t = crypto.encrypt(t, "cAndroid")
+
+    local ok, err = lib.candroid.package.install(t)
+    if not ok then
+      os.queueEvent("app_crash", err)
+      app.exit()
+    else
+      os.queueEvent("app_crash", "Success!")
+      app.exit()
+    end
+  end
+end

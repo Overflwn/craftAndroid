@@ -1,0 +1,18 @@
+{
+  os = {
+    type = "system",
+    size = 0,
+  },
+  [ "DL-A" ] = {
+    type = "system",
+    size = 0,
+  },
+  launcher = {
+    type = "system",
+    size = 0,
+  },
+  settings = {
+    type = "system",
+    size = 0,
+  },
+}

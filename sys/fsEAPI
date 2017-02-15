@@ -1,0 +1,471 @@
+--[[
+         _         _            _     _      _              _          _            _            _
+        /\ \      / /\         /\ \ /_/\    /\ \           /\ \       /\ \         / /\         /\ \
+       /  \ \    / /  \       /  \ \\ \ \   \ \_\         /  \ \     /  \ \       / /  \       /  \ \
+      / /\ \ \  / / /\ \__   / /\ \ \\ \ \__/ / /        / /\ \ \   / /\ \ \     / / /\ \__   / /\ \ \
+     / / /\ \_\/ / /\ \___\ / / /\ \_\\ \__ \/_/        / / /\ \_\ / / /\ \ \   / / /\ \___\ / / /\ \_\
+    / /_/_ \/_/\ \ \ \/___// /_/_ \/_/ \/_/\__/\       / / /_/ / // / /  \ \_\  \ \ \ \/___// /_/_ \/_/
+   / /____/\    \ \ \     / /____/\     _/\/__\ \     / / /__\/ // / /   / / /   \ \ \     / /____/\
+  / /\____\/_    \ \ \   / /\____\/    / _/_/\ \ \   / / /_____// / /   / / /_    \ \ \   / /\____\/
+ / / /     /_/\__/ / /  / / /______   / / /   \ \ \ / / /      / / /___/ / //_/\__/ / /  / / /______
+/ / /      \ \/___/ /  / / /_______\ / / /    /_/ // / /      / / /____\/ / \ \/___/ /  / / /_______\
+\/_/        \_____\/   \/__________/ \/_/     \_\/ \/_/       \/_________/   \_____\/   \/__________/
+
+fsExpose graphics API
+
+~made by Piorjade
+
+to be expanded
+]]
+
+--[[
+	example items table
+local items = {
+	['mybutton'] = {
+		type = "button",
+		text = "next",
+		length = 4,
+		x = 2,
+		y = 2,
+		bg = colors.gray,
+		fg = colors.blue,
+	}
+}
+]]
+local oldTerm = term.current()
+local maxX, maxY = term.getSize()
+local mainWindow = window.create(oldTerm, 1, 1, maxX, maxY)
+term.redirect(mainWindow)
+function addButton(items, name, text, length, x, y)
+	-- check for errors in arguments
+	if type(items) ~= "table" then return false, "table expected" end
+	if type(name) ~= "string" or #name < 1 then return false, "no name given" end
+	if type(text) ~= "string" then return false, "no text given" end
+	if type(length) ~= "number" or length < 1 then return false, "no given length" end
+	if type(x) ~= "number" or x < 1 then return false, "no x coordinate given" end
+	if type(y) ~= "number" or y < 1 then return false, "no y coordinate given" end
+	--errorcheck end
+	--insert into table; NOTE: this will delete items with the same name
+	items[name] = {}
+	items[name]['type'] = "button"
+	items[name]['text'] = text
+	items[name]['length'] = length
+	items[name]['bg'] = colors.lightGray
+	items[name]['fg'] = colors.blue
+	items[name]['x'] = x
+	items[name]['y'] = y
+	return true
+end
+
+function addToggle(items, name, x, y)
+	-- check for errors in arguments
+	if type(items) ~= "table" then return false, "table expected" end
+	if type(name) ~= "string" or #name < 1 then return false, "no name given" end
+	if type(x) ~= "number" or x < 1 then return false, "no x coordinate given" end
+	if type(y) ~= "number" or y < 1 then return false, "no y coordinate given" end
+	--errorcheck end
+	items[name] = {}
+	items[name]['type'] = "toggle"
+	items[name]['toggled'] = false
+	items[name]['x'] = x
+	items[name]['y'] = y
+	return true
+end
+
+function addContextMenu(scrollBox, tableChilds)
+	-- check for errors in arguments
+	if type(scrollBox) ~= "table" then return false, "table expected" end
+	if type(tableChilds) ~= "table" or #tableChilds < 1 then return false, "no table of childs" end
+	--errorcheck end
+	--insert the contextmenu in the scrollBox, NOTE: an already context menu will be deleted
+	scrollBox['context'] = {}
+	scrollBox.context['list'] = {}
+	scrollBox['context']['window'] = window.create(oldTerm, 1, 1, 20, #tableChilds, false)
+	term.redirect(scrollBox.context.window)
+	for k, v in ipairs(tableChilds) do
+		term.setBackgroundColor(v.bg)
+		term.setTextColor(v.fg)
+		term.clearLine()
+		term.write(v.text)
+		local oldx, oldy = term.getCursorPos()
+		term.setCursorPos(1, oldy+1)
+		table.insert(scrollBox.context.list, v)
+	end
+	term.redirect(mainWindow)
+	return true
+end
+
+function addScrollBox(items, name, lengthx, lengthy, x, y)
+	-- check for errors in arguments
+	if type(items) ~= "table" then return false, "table expected" end
+	if type(name) ~= "string" or #name < 1 then return false, "no name given" end
+	if type(lengthx) ~= "number" or lengthx < 1 then return false, "no given lengthX" end
+	if type(lengthy) ~= "number" or lengthy < 1 then return false, "no given lengthY" end
+	if type(x) ~= "number" or x < 1 then return false, "no x coordinate given" end
+	if type(y) ~= "number" or y < 1 then return false, "no y coordinate given" end
+	--errorcheck end
+	--insert into table; NOTE: this will delete items with the same name
+	items[name] = {}
+	items[name]['type'] = "scrollBox"
+	items[name]['lengthx'] = lengthx
+	items[name]['lengthy'] = lengthy
+	items[name]['bg'] = colors.lightGray
+	items[name]['fg'] = colors.lime
+	items[name]['x'] = x
+	items[name]['y'] = y
+	--how many childs are above, outside the box
+	items[name]['missing'] = 0
+	--how many childs are below, outside the box
+	items[name]['left'] = 0
+	--table of strings, these will act like buttons, which stay selected
+	items[name]['childs'] = {}
+	--EXAMPLE:
+	--[[
+	items[name]['childs'] = {
+		{
+			text = "myFile",
+			selected = false,
+
+		},
+		{
+			text = "mySecondFile",
+			selected = true,
+		}
+	}
+	]]
+	return true
+end
+
+function addChild(scrollBox, str)
+	--add a child into a scrollbox
+	--errorcheck
+	if type(scrollBox) ~= "table" then return false, "table expected" end
+	if type(str) ~= "string" then return false, "string expected" end
+	--errorcheck end
+	--insert into table; NOTE: child with the same name will be removed
+	local tab = {}
+	tab['selected'] = false
+	tab['text'] = str
+	tab['fg'] = colors.lime
+	tab['bg'] = colors.lightGray
+	table.insert(scrollBox.childs, tab)
+	if #scrollBox.childs > scrollBox.lengthy then
+		scrollBox.left = scrollBox.left+1
+	end
+	return true
+end
+
+function clearChilds(scrollBox)
+	--remove all childs from the scrollbox
+	--errorcheck
+	if type(scrollBox) ~= "table" then return false, "table expected" end
+	--errorcheck end
+	scrollBox.left = 0
+	scrollBox.missing = 0
+	scrollBox.childs = {}
+	return true
+end
+
+function removeChild(scrollBox, key)
+	--remove a child from the scrollbox
+	--errorcheck
+	if type(scrollBox) ~= "table" then return false, "table expected" end
+	if type(key) ~= "number" then return false, "string expected" end
+	--errorcheck end
+	scrollBox.left = scrollBox.left - 1
+	if scrollBox.left < 0 then
+		scrollBox.left = 0
+		scrollBox.missing = scrollBox.missing - 1
+		if scrollBox.missing < 0 then scrollBox.missing = 0 end
+	end
+	table.remove(scrollBox.childs, key)
+	return true
+end
+
+function addTextBox(items, name, text, length, x, y)
+	-- check for errors in arguments
+	if type(items) ~= "table" then return false, "table expected" end
+	if type(name) ~= "string" or #name < 1 then return false, "no name given" end
+	if type(text) ~= "string" then return false, "no text given" end
+	if type(length) ~= "number" or length < 1 then return false, "no given length" end
+	if type(x) ~= "number" or x < 1 then return false, "no x coordinate given" end
+	if type(y) ~= "number" or y < 1 then return false, "no y coordinate given" end
+	--errorcheck end
+	--insert into table; NOTE: this will delete items with the same name
+	items[name] = {}
+	items[name]['type'] = "textBox"
+	items[name]['text'] = text
+	items[name]['length'] = length
+	items[name]['bg'] = colors.lightGray
+	items[name]['fg'] = colors.lime
+	items[name]['x'] = x
+	items[name]['y'] = y
+	return true
+end
+
+function addLabel(items, name, text, length, x, y)
+	-- check for errors in arguments
+	if type(items) ~= "table" then return false, "table expected" end
+	if type(name) ~= "string" or #name < 1 then return false, "no name given" end
+	if type(text) ~= "string" then return false, "no text given" end
+	if type(length) ~= "number" or length < 1 then return false, "no given length" end
+	if type(x) ~= "number" or x < 1 then return false, "no x coordinate given" end
+	if type(y) ~= "number" or y < 1 then return false, "no y coordinate given" end
+	--errorcheck end
+	--insert into table; NOTE: this will delete items with the same name
+	items[name] = {}
+	items[name]['type'] = "label"
+	items[name]['text'] = text
+	items[name]['length'] = length
+	items[name]['bg'] = colors.black
+	items[name]['fg'] = colors.white
+	items[name]['x'] = x
+	items[name]['y'] = y
+	return true
+end
+
+function updateAll(items, bg)
+	--check for errors
+	if type(items) ~= "table" then return false, "table expected" end
+	--errorcheck end
+
+	--clear the screen with the given background color and draw every item of the given item table
+	term.setCursorPos(1,1)
+	term.setBackgroundColor(bg)
+	term.clear()
+	for k, v in pairs(items) do
+		update(v)
+	end
+end
+
+local function readN(preset, maxL)
+	--read function, no new line
+	term.setCursorBlink(true)
+	local str = preset
+	term.write(str)
+	repeat
+		local ev, key = os.pullEvent()
+		if ev == "char" and #str < maxL then
+			str = str..key
+			term.write(key)
+		elseif ev == "key" and key == keys.backspace and #str >= 1 then
+			str = string.reverse(str)
+			str = string.sub(str, 2)
+			str = string.reverse(str)
+			local cX, cY = term.getCursorPos()
+			term.setCursorPos(cX-1, cY)
+			term.write(" ")
+			term.setCursorPos(cX-1, cY)
+		end
+	until ev == "key" and key == keys.enter
+	term.setCursorBlink(false)
+	return str
+end
+
+function update(v)
+	--redraw a specific item, giving the data (table) of that item
+	if v.type ~= "scrollBox" and v.type ~= "toggle" then
+		term.setCursorPos(v.x, v.y)
+		term.setBackgroundColor(v.bg)
+		term.setTextColor(v.fg)
+		local c = 1
+		repeat
+			if c <= v.length then
+				term.write(" ")
+			end
+			c = c+1
+		until c > v.length
+		term.setCursorPos(v.x, v.y)
+		term.write(v.text)
+	elseif v.type == "toggle" then
+		term.setCursorPos(v.x, v.y)
+		if v.toggled then
+			term.setBackgroundColor(colors.green)
+			term.write(" ")
+			term.setBackgroundColor(colors.white)
+			term.write(" ")
+		else
+			term.setBackgroundColor(colors.white)
+			term.write(" ")
+			term.setBackgroundColor(colors.red)
+			term.write(" ")
+		end
+	else
+		local cy = 1
+		term.setCursorPos(v.x, v.y)
+		term.setBackgroundColor(v.bg)
+		term.setTextColor(v.fg)
+		repeat
+			if cy <= v.lengthy then
+				local c = 1
+				term.setCursorPos(v.x, v.y-1+cy)
+				repeat
+					if c <= v.lengthx then
+						term.write(" ")
+					end
+					c = c+1
+				until c > v.lengthx
+			end
+			cy = cy+1
+		until cy > v.lengthy
+		term.setCursorPos(v.x, v.y)
+		cy = 1
+		for each, child in ipairs(v.childs) do
+			if cy+v.missing == each and cy <= v.lengthy then
+				local oldx, oldy = term.getCursorPos()
+				term.setBackgroundColor(child.bg)
+				term.setTextColor(child.fg)
+				if child.selected then
+					term.setBackgroundColor(colors.lightBlue)
+					term.setTextColor(colors.white)
+				end
+				local c = 1
+				repeat
+					if c <= v.lengthx then
+					term.write(" ")
+				end
+				c = c+1
+				until c > v.lengthx
+				term.setCursorPos(oldx, oldy)
+				term.write(child.text)
+				term.setBackgroundColor(v.bg)
+				term.setTextColor(v.fg)
+				term.setCursorPos(oldx, oldy+1)
+				cy = cy+1
+			end
+		end
+	end
+end
+
+
+
+function run(items)
+	--catch events for that specific item-table
+	if type(items) == "table" then
+		while true do
+			local evt, button, x, y = os.pullEvent()
+			for k, v in pairs(items) do
+				if evt == "mouse_click" and button == 1 and v.type == "button" and x >= v.x and x < v.x+v.length and y == v.y then
+					local oldbg = v.bg
+					local oldfg = v.fg
+					v.bg = colors.blue
+					v.fg = colors.white
+					update(v)
+					sleep(0.125)
+					v.bg = oldbg
+					v.fg = oldfg
+					update(v)
+					os.queueEvent("button_press", "button", k, nil)
+				elseif evt == "mouse_click" and button == 1 and v.type == "toggle" and x >= v.x and x < v.x+2 and y == v.y then
+					if v.toggled then
+						v.toggled = false
+						update(v)
+					else
+						v.toggled = true
+						update(v)
+					end
+					os.queueEvent("toggle", "toggle", k, nil)
+				elseif evt == "mouse_click" and button == 1 and v.type == "textBox" and x >= v.x and x < v.x+v.length and y == v.y then
+					v.bg = colors.gray
+					v.fg = colors.lime
+					update(v)
+					term.setCursorPos(v.x, v.y)
+					term.setBackgroundColor(v.bg)
+					term.setTextColor(v.fg)
+					local e = readN(v.text, v.length)
+					v.text = e
+					v.bg = colors.lightGray
+					v.fg = colors.lime
+					update(v)
+					os.queueEvent("textBox_input", "textBox", k, nil)
+				elseif evt == "mouse_click" and button == 1 and v.type == "scrollBox" and x >= v.x and x < v.x+v.lengthx and y >= v.y and y < v.y+v.lengthy then
+					local newy = y-v.y+1+v.missing
+					if v.childs[newy] ~= nil then
+						for each, child in ipairs(v.childs) do
+							if child.selected then
+								child.selected = false
+							end
+						end
+						v.childs[newy].selected = true
+						update(v)
+						os.queueEvent("scrollBox_select", "scrollBox", k, newy)
+					end
+				elseif evt == "mouse_click" and button == 2 and v.context ~= nil and v.type == "scrollBox" and x >= v.x and x < v.x+v.lengthx and y >= v.y and y < v.y+v.lengthy then
+					local newy = y-v.y+1+v.missing
+					if v.childs[newy] ~= nil then
+						for each, child in ipairs(v.childs) do
+							if child.selected then
+								child.selected = false
+							end
+						end
+						v.childs[newy].selected = true
+						update(v)
+					else
+						for each, child in ipairs(v.childs) do
+							if child.selected then
+								newy = each
+								break
+							end
+						end
+					end
+					local xPosEnd = x+20
+					local yPosEnd = y+#v.context.list
+					local newX = x
+					local newY = y
+					if xPosEnd > maxX then
+						local c = xPosEnd - maxX
+						x = x-c
+					end
+					if yPosEnd > maxY then
+						local c = yPosEnd - maxY
+						y = y-c
+					end
+					v.context.window.reposition(x, y)
+					v.context.window.setVisible(true)
+					term.redirect(v.context.window)
+					repeat
+						local ev, button, nx, ny = os.pullEvent("mouse_click")
+						local width, height = term.getSize()
+						if ev == "mouse_click" and button == 1 and nx >= x and nx < x+20 and ny >= y and ny < y+height then
+							ny = ny-y+1
+							term.setCursorPos(1, ny)
+							term.setBackgroundColor(colors.blue)
+							term.setTextColor(colors.white)
+							term.clearLine()
+							term.write(v.context.list[ny].text)
+							sleep(0.125)
+							term.setCursorPos(1, ny)
+							term.setBackgroundColor(v.context.list[ny].bg)
+							term.setTextColor(v.context.list[ny].fg)
+							term.clearLine()
+							term.write(v.context.list[ny].text)
+							v.context.window.setVisible(false)
+							mainWindow.redraw()
+							term.redirect(mainWindow)
+							os.queueEvent("context_select", k, newy, v.context.list[ny].text)
+						elseif ev == "mouse_click" then
+							v.context.window.setVisible(false)
+							mainWindow.redraw()
+							term.redirect(mainWindow)
+						end
+					until ev == "mouse_click"
+					update(v)
+				elseif evt == "mouse_scroll" and button == 1 and v.type == "scrollBox" and x >= v.x and x < v.x+v.lengthx and y >= v.y and y < v.y+v.lengthy and v.left > 0 then
+					v.missing = v.missing + 1
+					v.left = v.left - 1
+					update(v)
+					os.queueEvent("scrollBox_scroll", "scrollbox", k, 1)
+				elseif evt == "mouse_scroll" and button == -1 and v.type == "scrollBox" and x >= v.x and x < v.x+v.lengthx and y >= v.y and y < v.y+v.lengthy and v.missing > 0 then
+					v.missing = v.missing - 1
+					v.left = v.left + 1
+					update(v)
+					os.queueEvent("scrollBox_scroll", "scrollbox", k, -1)
+				end
+			end
+		end
+	elseif type(items) ~= "table" then
+		return false, "table expected"
+	else
+		return false, "already running"
+	end
+end

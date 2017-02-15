@@ -1,0 +1,339 @@
+--[[
+      The craftAndroid stock launcher / home-menu
+    This launcher shows every app located in /craftAndroid/apps/ (except itself)
+    and when clicking on one, it tries to boot it up, else it prints an error.
+
+    ~Piorjade
+]]
+
+
+local function clear()
+  term.setCursorPos(1,1)
+  term.setBackgroundColor(lib.candroid.config.get("launcher", "customization", "mainBg"))
+  term.setTextColor(lib.candroid.config.get("launcher", "customization", "mainFg"))
+  term.clear()
+end
+
+local thisTerm = term.current()
+local maxX, maxY = term.getSize()
+local buttons = {
+  backButton = {
+    x = 1,
+    y = 1,
+    canBack = false,
+
+  },
+  forthButton = {
+    x = 3,
+    y = 3,
+    canForth = false,
+
+  },
+}
+
+buttons.backButton.redraw = function()
+  term.setCursorPos(buttons.backButton.x, buttons.backButton.y)
+  if not buttons.backButton.canBack then
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.white)
+    term.write(string.char(17))
+  else
+    term.setBackgroundColor(colors.green)
+    term.setTextColor(colors.white)
+    term.write(string.char(17))
+  end
+end
+
+buttons.backButton.click = function()
+  if buttons.backButton.canBack then
+    term.setCursorPos(buttons.backButton.x, buttons.backButton.y)
+    term.setBackgroundColor(colors.blue)
+    term.setTextColor(colors.white)
+    term.write(string.char(17))
+    sleep(0.125)
+    buttons.backButton.redraw()
+    return true
+  else
+    return false
+  end
+end
+
+buttons.forthButton.redraw = function()
+  term.setCursorPos(buttons.forthButton.x, buttons.forthButton.y)
+  if not buttons.forthButton.canForth then
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.white)
+    term.write(string.char(16))
+  else
+    term.setBackgroundColor(colors.green)
+    term.setTextColor(colors.white)
+    term.write(string.char(16))
+  end
+end
+
+buttons.forthButton.click = function()
+  if buttons.forthButton.canForth then
+    term.setCursorPos(buttons.forthButton.x, buttons.forthButton.y)
+    term.setBackgroundColor(colors.blue)
+    term.setTextColor(colors.white)
+    term.write(string.char(16))
+    sleep(0.125)
+    buttons.forthButton.redraw()
+    return true
+  else
+    return false
+  end
+end
+
+local space, spaceY = math.floor((maxX-1)/(4+1)), math.floor((maxY-1)/(5+1))
+local applist  = {
+  maxPages = 1,
+  curPage = 1,
+  pages = {},
+  apps = {},
+}
+for each, folder in ipairs(fs.list("/craftAndroid/apps/")) do
+  if fs.isDir("/craftAndroid/apps/"..folder) and fs.exists("/craftAndroid/apps/"..folder.."/startup") then
+    table.insert(applist.apps, folder)
+  end
+end
+
+local function drawApps(applist, makePages)
+  --This function draws app from a table (only names)
+  --If you make "makePages" true, it will initialize the pages
+  --for the launcher, so that it doesn't have to be done later on. (Basically
+  --simple maths going on)
+  if makePages then
+    term.setCursorPos(2, 2)
+    local usedX, usedY = 0,0
+    local cPage = 1
+    local pages = {
+
+    }
+    pages[cPage] = {}
+    local maXx, maXy = maxX-1, maxY-1
+    for each, app in ipairs(applist) do
+      if app ~= "launcher" then
+        local image
+        if fs.exists("/craftAndroid/apps/"..app.."/img") then
+          image = paintutils.loadImage("/craftAndroid/apps/"..app.."/img")
+        else
+          image = paintutils.loadImage("/craftAndroid/apps/.defaultImg")
+        end
+        local x, y = term.getCursorPos()
+        paintutils.drawImage(image, x, y)
+        term.setCursorPos(x, y+4)
+        term.setBackgroundColor(lib.candroid.config.get("launcher", "customization", "mainBg"))
+        term.setTextColor(lib.candroid.config.get("launcher", "customization", "mainFg"))
+        term.write(string.sub(app, 1, 4))
+        usedX = usedX+5
+        local cx = usedX + 5
+        local cy = usedY + 6
+        table.insert(pages[cPage], app)
+        if cx <= maXx then
+          term.setCursorPos(x+5, y)
+        elseif cy <= maXy then
+          usedY = usedY + 6
+          usedX = 0
+          term.setCursorPos(2, y+6)
+        elseif #applist-each > 0 then
+          cPage = cPage+1
+          pages[cPage] = {}
+          term.setCursorPos(2, 2)
+          usedX, usedY = 0, 0
+        end
+      end
+    end
+    return pages
+  else
+    term.setCursorPos(2, 2)
+    local usedX, usedY = 0,0
+    local maXx, maXy = maxX-1, maxY-1
+    for each, app in ipairs(applist) do
+      if app ~= "launcher" then
+        local image
+        if fs.exists("/craftAndroid/apps/"..app.."/img") then
+          image = paintutils.loadImage("/craftAndroid/apps/"..app.."/img")
+        else
+          image = paintutils.loadImage("/craftAndroid/apps/.defaultImg")
+        end
+        local x, y = term.getCursorPos()
+        paintutils.drawImage(image, x, y)
+        term.setCursorPos(x, y+4)
+        term.setBackgroundColor(lib.candroid.config.get("launcher", "customization", "mainBg"))
+        term.setTextColor(lib.candroid.config.get("launcher", "customization", "mainFg"))
+        term.write(string.sub(app, 1, 4))
+        usedX = usedX+5
+        local cx = usedX + 5
+        local cy = usedY + 6
+        --if cx >= 5 then
+        if cx <= maXx then
+          term.setCursorPos(x+5, y)
+        elseif cy <= maXy then
+          usedY = usedY + 6
+          usedX = 0
+          term.setCursorPos(2, y+6)
+        end
+      end
+    end
+  end
+end
+
+buttons.backButton.x, buttons.backButton.y, buttons.forthButton.x, buttons.forthButton.y = math.floor(maxX/2/2), maxY, math.floor(maxX/2+maxX/2/2), maxY
+
+local function redrawScreen()
+  --ez clearing
+  clear()
+  drawApps(applist.pages[applist.curPage])
+  buttons.backButton.redraw()
+  buttons.forthButton.redraw()
+end
+
+--initialize stuff
+applist.pages = drawApps(applist.apps, true)
+redrawScreen()
+applist.maxPages = #applist.pages
+applist.curPage = 1
+
+if applist.maxPages > 1 then
+  buttons.forthButton.canForth = true
+end
+buttons.backButton.redraw()
+buttons.forthButton.redraw()
+
+
+
+while true do
+  --main loop, basically catches crashes and waits for mouse input
+  local ev, btn, x, y = os.pullEvent()
+  term.setCursorPos(math.floor(maxX/2)-1,maxY)
+  term.setBackgroundColor(colors.gray)
+  term.setTextColor(colors.white)
+  term.write(applist.curPage.."/"..applist.maxPages)
+  if ev == "mouse_click" and btn == 1 and x == buttons.backButton.x and y == buttons.backButton.y and applist.curPage > 1 then
+    local ok = buttons.backButton.click()
+    if ok then
+      applist.curPage = applist.curPage - 1
+      buttons.forthButton.canForth = true
+      if applist.curPage == 1 then
+        buttons.backButton.canBack = false
+      end
+      redrawScreen()
+    end
+  elseif ev == "mouse_click" and btn == 1 and x == buttons.forthButton.x and y == buttons.forthButton.y and applist.curPage < applist.maxPages then
+    local ok = buttons.forthButton.click()
+    if ok then
+      applist.curPage = applist.curPage + 1
+      buttons.backButton.canBack = true
+      if applist.curPage == applist.maxPages then
+        buttons.forthButton.canForth = false
+      end
+      redrawScreen()
+    end
+  elseif ev == "mouse_click" and btn == 1 then
+    --Here it calculates rows and columns from the applist page you are currently
+    --on. (using simple maths....well they're simple for ME)
+    local apppage = applist.curPage
+    local appnmbr = 0
+    local rows = {
+      numbr = 1,
+      row = {
+        {
+          startx = 0,
+          endx = 0,
+          starty = 0,
+          endy = 0
+        }
+      }
+    }
+    rows.numbr = spaceY
+    local counter = 0
+    while counter < rows.numbr do
+      local yPos = counter * 6 + 2
+      local xPos = space * 5 + 2
+      local amount = #applist.pages[applist.curPage] - (space+(space * counter))
+      rows.row[counter+1] = {}
+      if amount > 0 then
+        --if there are more apps than fit on a single row (normally > 5), create
+        --a new column. The advantage here is that it's easier to calculate
+        --the positions of the said apps.
+        rows.row[counter+1].startx = 2
+        rows.row[counter+1].endx = xPos-1
+        rows.row[counter+1].starty = yPos
+        rows.row[counter+1].endy = yPos+4
+        local cc = 1
+        rows.row[counter+1].parts = {
+          {
+            startx = 2,
+            endx = 5,
+            starty = yPos,
+            endy = yPos+4,
+          }
+        }
+        cc = 2
+        while cc <= space do
+          rows.row[counter+1].parts[cc] = {
+            startx = 1+(5*(cc-1))+1,
+            endx = 1+(5*(cc-1))+4,
+            starty = yPos,
+            endy = yPos+4,
+          }
+          cc = cc+1
+        end
+        counter = counter+1
+      else
+        --if there are as much apps as there fits on a row, calculate the
+        --positions of them (a LITTLE bit more advanced math than above)
+        local leftAmount = #applist.pages[applist.curPage] - (space * counter)
+        rows.row[counter+1].startx = 2
+        rows.row[counter+1].endx = 2+(5*leftAmount)-1
+        rows.row[counter+1].starty = yPos
+        rows.row[counter+1].endy = yPos+4
+        local cc = 1
+        rows.row[counter+1].parts = {
+          {
+            startx = 2,
+            endx = 5,
+            starty = yPos,
+            endy = yPos+4,
+          }
+        }
+        cc = 2
+        while cc <= leftAmount do
+          rows.row[counter+1].parts[cc] = {
+            startx = 1+(5*(cc-1))+1,
+            endx = 1+(5*(cc-1))+4,
+            starty = yPos,
+            endy = yPos+4,
+          }
+          cc = cc+1
+        end
+        counter = counter+1
+      end
+    end
+
+
+    --now skim through every row and column to check if the mouse input fits an
+    --entry in there. if yes, try to start that app up.
+    for each, row in ipairs(rows.row) do
+      if x >= row.startx and x <= row.endx and y >= row.starty and y <= row.endy then
+        for _, part in ipairs(row.parts) do
+          if x >= part.startx and x <= part.endx then
+            appnmbr = ((each-1) * space) + _
+            break
+          end
+        end
+      end
+    end
+    if appnmbr > 0 then
+      local app = applist.pages[apppage][appnmbr]
+      local ok, err = lib.craftAndroid.taskmanager.runApp(app, true)
+      if not ok then
+        os.queueEvent("app_crash", tostring(err))
+      end
+    end
+  elseif ev == "app_crash" then
+    lib.craftAndroid.displayCrash(btn)
+    lib.craftAndroid.goHome()
+  end
+end

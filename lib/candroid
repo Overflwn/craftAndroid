@@ -1,0 +1,224 @@
+--[[
+    The craftAndroid library
+
+    This includes the package installer :)
+]]
+local packageList = {
+  os = {
+    type = "system",
+    size = 0,
+  },
+  launcher = {
+    type = "system",
+    size = 0,
+  },
+  testapp = {
+    type = "user",
+    size = 0,
+  }
+}
+local _CONFIG = {
+  main = {
+    defaultLauncher = "launcher",
+  }
+}
+
+local _NOTIFICATIONS = {}
+
+os.loadAPI("/sys/crypto")
+if not _G.crypto and not crypto then
+  cLinuxPrintError("/lib/candroid", "/sys/crypto not found!")
+  sleep(2)
+  _flag("STATE_DEAD", true)
+end
+if fs.exists("/craftAndroid/apps/.list") then
+  local file, err = fs.open("/craftAndroid/apps/.list", "r")
+  if not file then
+    cLinuxPrintError("craftAndroid-AppList", err)
+    sleep(2)
+    _flag("STATE_DEAD", true)
+  end
+  packageList = textutils.unserialize(file.readAll())
+  file.close()
+else
+  local file, err = fs.open("/craftAndroid/apps/.list", "w")
+  if not file then
+    cLinuxPrintError("craftAndroid-AppList", err)
+    sleep(2)
+    _flag("STATE_DEAD", true)
+  end
+  file.write(textutils.serialize(packageList))
+  file.close()
+end
+
+local encPw = "cAndroid"
+
+local candroid = {}
+
+--CANDROID PACKAGE INSTALLER
+candroid.package = {}
+
+candroid.package.install = function(package)
+  --packages are serialized tables, which are ALSO encrypted (look at the top for the password)
+  --the encryption should make packages smaller so that's why
+  package = crypto.decrypt(package, encPw)
+  package = textutils.unserialize(package)
+  local size = package.size
+  if not fs.exists("/craftAndroid/apps/"..package.name) and fs.getFreeSpace("/") > size then
+    fs.makeDir("/craftAndroid/apps/"..package.name)
+    for each, folder in ipairs(package.folders) do
+      fs.makeDir("/craftAndroid/apps/"..package.name.."/"..folder)
+    end
+    for each, file in ipairs(package.files) do
+      local file, err = fs.open("/craftAndroid/apps/"..package.name.."/"..file, "w")
+      if not file then
+        return false, "error", file..":"..err
+      end
+      file.write(package.fileData[each])
+      file.close()
+    end
+    packageList[package.name] = {
+      size = package.size,
+      type = package.type,
+    }
+    if fs.exists("/craftAndroid/config/"..package.name) then fs.delete("/craftAndroid/config/"..package.name) end
+    fs.makeDir("/craftAndroid/config/"..package.name)
+    local file = fs.open("/craftAndroid/apps/.list", "w")
+    file.write(textutils.serialize(packageList))
+    file.close()
+    return true
+  elseif not fs.exists("/craftAndroid/apps/"..package.name) and fs.getFreeSpace() <= size then
+    return false, "not enough space"
+  else
+    return false, "already exists"
+  end
+end
+
+candroid.package.remove = function(name)
+  --remove the package from the list and delete the entire folder (+config folder)
+  if packageList[name] and packageList[name].type ~= "system" then
+    local ok, err = fs.delete("/craftAndroid/apps/"..name)
+    if ok == "noPermission" then
+      return false, "noPermission"
+    else
+      fs.delete("/craftAndroid/config/"..name)
+    end
+    packageList[name] = nil
+    local file = fs.open("/craftAndroid/apps/.list", "w")
+    file.write(textutils.serialize(packageList))
+    file.close()
+    return true
+  elseif packageList[name] and packageList[name].type == "system" then
+    return false, "system application"
+  else
+    return false, "does not exist"
+  end
+end
+
+candroid.package.list = function()
+  --return a basic list of every installed app (as key)
+  --use list[blah] for example to test if an app is installed
+  local t = {}
+  for each, a in pairs(packageList) do
+    t[each] = a
+  end
+  return t
+end
+--CANDROID PACKAGE INSTALLER END
+
+--CANDROID APP CONFIGURATIONS
+candroid.config = {}
+candroid.config.get = function(name, file, variable)
+  --get a specific variable of the specified config file from a specific app
+  local list = candroid.package.list()
+  if list[name] then
+    local file, err = fs.open("/craftAndroid/config/"..name.."/"..file, "r")
+    if not file then
+      return false, "config does not exist"
+    end
+    local t = textutils.unserialize(file.readAll())
+    file.close()
+    return t[variable]
+  else
+    return false, "app does not exist"
+  end
+end
+
+candroid.config.set = function(name, file, variable, value)
+  --set a specific variable of the specified config file from a specific app
+  local list = candroid.package.list()
+  if list[name] then
+    local f, err = fs.open("/craftAndroid/config/"..name.."/"..file, "r")
+    if not f then
+      return false, "config does not exist"
+    end
+    local t = textutils.unserialize(f.readAll())
+    f.close()
+    t[variable] = value
+    f, err = fs.open("/craftAndroid/config/"..name.."/"..file, "w")
+    f.write(textutils.serialize(t))
+    f.close()
+    return true
+  else
+    return false, "app does not exist"
+  end
+end
+
+candroid.config.create = function(name, file, conf)
+  --create a specific config(-file) for the specified app with the optionally given table
+  --if there is no table, it will create an empty one
+  local t
+  if not conf then t = {} else t = conf end
+  if not fs.exists("/craftAndroid/config/"..name) then return false, "app does not exist" end
+  if not fs.exists("/craftAndroid/config/"..name.."/"..file) then
+    local file = fs.open("/craftAndroid/config/"..name.."/"..file)
+    file.write(textutils.serialize(t))
+    file.close()
+    return true
+  else
+    return false, "config already exists"
+  end
+end
+
+candroid.config.exists = function(name, file)
+  --simple function to check for configs quick
+  if not fs.exists("/craftAndroid/config/"..name) then return nil, "app does not exist" end
+  if not fs.exists("/craftAndroid/config/"..name.."/"..file) then return false else return true end
+end
+
+candroid.config.getWhole = function(name, file)
+  --get a copy of the whole specified config file from the specified app
+  if not fs.exists("/craftAndroid/config/"..name) then return false, "app does not exist" end
+  if not fs.exists("/craftAndroid/config/"..name.."/"..file) then return false, "config does not exist" end
+  local file = fs.open("/craftAndroid/config/"..name.."/"..file, "r")
+  local t = textutils.unserialize(file.readAll())
+  file.close()
+  return t
+end
+--CANDROID APP CONFIGURATIONS END
+
+--CANDROID NOTIFICATION
+local function addNotification(message)
+  table.insert(_NOTIFICATIONS, message)
+  return true
+end
+candroid.notification = {}
+
+candroid.notification.notify = function(type, message)
+  if type == "app_crash" then
+
+    os.queueEvent("app_crash", message)
+  else
+    addNotification(message)
+  end
+end
+--CANDROID NOTIFICATION END
+
+if not fs.exists("/craftAndroid/config/os/main") then
+  if not fs.exists("/craftAndroid/config/os") then fs.makeDir("/craftAndroid/config/os") end
+  local file = fs.open("/craftAndroid/config/os/main", "w")
+  file.write(textutils.serialize(_CONFIG.main))
+  file.close()
+end
+
+_putLib("candroid", candroid)

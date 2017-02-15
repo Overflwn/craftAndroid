@@ -1,0 +1,130 @@
+term.setCursorPos(1,1)
+term.setBackgroundColor(colors.white)
+term.setTextColor(colors.blue)
+term.clear()
+--[[
+      The system settings app.
+      There's nothing else to say :P
+
+    ~Piorjade
+]]
+--                    APIs
+
+--this API is needed for the settings app
+local maxX, maxY = term.getSize()
+os.loadAPI("/sys/fsEAPI")
+if not fs.exists("/sys/fsEAPI") then
+  --if there is no fsEAPI, exit out and display the error
+  os.queueEvent("app_crash", "fsEAPI not found.")
+  app.exit()
+elseif not _G.fsEAPI and not fsEAPI then
+  os.queueEvent("app_crash", "fsEAPI not found.")
+  app.exit()
+end
+
+local items = {}
+fsEAPI.addLabel(items, "bgLabel", "Current BG-Color: "..lib.candroid.config.get("launcher", "customization", "mainBg"), 21, 2, 2)
+fsEAPI.addLabel(items, "fgLabel", "Current FG-Color: "..lib.candroid.config.get("launcher", "customization", "mainFg"), 21, 2, 3)
+items.bgLabel.bg = colors.lightGray
+items.fgLabel.bg = colors.lightGray
+fsEAPI.addTextBox(items, "changeBg", "New BG", 6, 2, 5)
+fsEAPI.addTextBox(items, "changeFg", "New FG", 6, 9, 5)
+fsEAPI.addToggle(items, "toggleRednet", 2, 7)
+fsEAPI.addLabel(items, "info", "You need do reboot,", 19, 2, 9)
+fsEAPI.addLabel(items, "info2", "to see effects.", 15, 2, 10)
+fsEAPI.addLabel(items, "info3", "Toggle RedNet", 13, 5, 7)
+fsEAPI.addLabel(items, "info4", "List of all apps", 16, 2, 11)
+items.info.bg = colors.lightGray
+items.info2.bg = colors.lightGray
+items.info3.bg = colors.lightGray
+items.info4.bg = colors.lightGray
+fsEAPI.addScrollBox(items, "appList", maxX, maxY-11, 1, 12)
+items.appList.bg = colors.gray
+for each, app in pairs(lib.candroid.package.list()) do
+  if app.type ~= "system" then
+    fsEAPI.addChild(items.appList, each)
+  end
+end
+local context = {
+  {
+    bg = colors.black,
+    fg = colors.red,
+    text = "Remove",
+  }
+}
+fsEAPI.addContextMenu(items.appList, context)
+
+--                    Variables
+
+--This bool toggles whether the app should show the rednet modem option or not
+--(As cLinux has rednet disabled at stock)
+local rModem = false
+if _G.rednet or rednet then rModem = true else rModem = false end
+--This bool toggles the actual rednet API (run it as service or not)
+if rModem then items.toggleRednet.toggled = true end
+fsEAPI.updateAll(items, colors.lightGray)
+--                    Functions
+
+local function clear(bg, fg)
+  term.setCursorPos(1,1)
+  term.setBackgroundColor(bg)
+  term.setTextColor(fg)
+  term.clear()
+end
+
+local function init()
+
+end
+
+local c1 = coroutine.create(fsEAPI.run)
+coroutine.resume(c1, items)
+local evt = {}
+while true do
+  coroutine.resume(c1, unpack(evt))
+  evt = {os.pullEvent()}
+  if evt[1] == "key" and evt[2] == keys.delete then
+    app.exit()
+  elseif evt[1] == "toggle" then
+    if items.toggleRednet.toggled then
+      lib.serv.set("/etc/services.d/rednet", true)
+    else
+      lib.serv.set("/etc/services.d/rednet", false)
+    end
+  elseif evt[1] == "context_select" then
+    local ok, err = lib.candroid.package.remove(items.appList.childs[evt[3]].text)
+    if ok == false then
+      os.queueEvent("app_crash", tostring(err))
+      app.exit()
+    else
+      local ok = fsEAPI.removeChild(items.appList, evt[3])
+      if not ok then
+        os.queueEvent("app_crash", "unknown")
+        app.exit()
+      end
+      fsEAPI.update(items.appList)
+    end
+  elseif evt[1] == "textBox_input" then
+    local found = false
+    for each, col in pairs(_G.colors) do
+      if col == tonumber(items[evt[3]].text) then
+        found = true
+        break
+      end
+    end
+    if found then
+      if evt[3] == "changeBg" then
+        lib.candroid.config.set("launcher", "customization", "mainBg", tonumber(items[evt[3]].text))
+      elseif evt[3] == "changeFg" then
+        lib.candroid.config.set("launcher", "customization", "mainFg", tonumber(items[evt[3]].text))
+      end
+    else
+      if evt[3] == "changeBg" then
+        items[evt[3]].text = "New BG"
+        fsEAPI.update(items[evt[3]])
+      elseif evt[3] == "changeFg" then
+        items[evt[3]].text = "New FG"
+        fsEAPI.update(items[evt[3]])
+      end
+    end
+  end
+end
