@@ -1,0 +1,7 @@
+--test Notification
+local _, ok = pcall(lib.candroid.notification.notify, "testapp", "Hello World!")
+
+if not _ then
+  os.queueEvent("app_crash", ok)
+  app.exit()
+end

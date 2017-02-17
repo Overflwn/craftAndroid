@@ -198,19 +198,40 @@ end
 --CANDROID APP CONFIGURATIONS END
 
 --CANDROID NOTIFICATION
-local function addNotification(message)
-  table.insert(_NOTIFICATIONS, message)
+local function addNotification(application, message)
+  if not _NOTIFICATIONS[application] then
+    _NOTIFICATIONS[application] = {}
+  end
+  table.insert(_NOTIFICATIONS[application], message)
+  os.queueEvent("app_notification")
   return true
 end
 candroid.notification = {}
 
-candroid.notification.notify = function(type, message)
-  if type == "app_crash" then
+candroid.notification.notify = function(application, message)
+  addNotification(application, message)
+end
 
-    os.queueEvent("app_crash", message)
-  else
-    addNotification(message)
+candroid.notification.getList = function()
+  local t = {}
+  for each, v in pairs(_NOTIFICATIONS) do
+    t[each] = v
   end
+  return t
+end
+
+candroid.notification.clearApp = function(appName)
+  if _NOTIFICATIONS[appName] then
+    _NOTIFICATIONS[appName] = {}
+    return true
+  else
+    return false, "no such app"
+  end
+end
+
+candroid.notification.clearAll = function()
+  _NOTIFICATIONS = {}
+  return true
 end
 --CANDROID NOTIFICATION END
 

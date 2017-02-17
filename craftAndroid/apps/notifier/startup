@@ -1,0 +1,140 @@
+--[[
+      The system Notification app
+
+    Will probably NOT be replaceable,
+    sorry for that.
+
+    ~Piorjade
+]]
+--APIs
+term.setCursorPos(1,1)
+term.setBackgroundColor(colors.white)
+term.setTextColor(colors.black)
+term.clear()
+os.loadAPI("/sys/fsEAPI")
+
+--variables
+local _ver = 0.1
+local _verstr = tostring(_ver)
+local items = {}
+local context1 = {
+  {
+    text = "Select",
+    bg = colors.gray,
+    fg = colors.white,
+  },
+  {
+    text = "Clear",
+    bg = colors.gray,
+    fg = colors.red,
+  },
+}
+local maxX, maxY = term.getSize()
+local inApp = false
+local _NOTIFICATIONS = lib.candroid.notification.getList()
+fsEAPI.addScrollBox(items, "mainSB", maxX, maxY-1, 1, 2)
+fsEAPI.addLabel(items, "info", "Select an app", 13, 2, 1)
+items.info.bg = colors.white
+items.info.fg = colors.black
+fsEAPI.addContextMenu(items.mainSB, context1)
+for child, a in pairs(_NOTIFICATIONS) do
+  fsEAPI.addChild(items.mainSB, child)
+end
+fsEAPI.updateAll(items, colors.white)
+--functions
+local function clear(bg, fg)
+  term.setCursorPos(1,1)
+  term.setBackgroundColor(bg)
+  term.setTextColor(fg)
+  term.clear()
+end
+
+local function refreshNotifications(app)
+  if not app then
+    _NOTIFICATIONS = lib.candroid.notification.getList()
+    fsEAPI.clearChilds(items.mainSB)
+    context1 = {
+      {
+        text = "Select",
+        bg = colors.gray,
+        fg = colors.white,
+      },
+      {
+        text = "Clear",
+        bg = colors.gray,
+        fg = colors.red,
+      },
+    }
+    items.info.text = "Select an app"
+    fsEAPI.addContextMenu(items.mainSB, context1)
+    for child, a in pairs(_NOTIFICATIONS) do
+      fsEAPI.addChild(items.mainSB, child)
+    end
+    fsEAPI.updateAll(items, colors.white)
+    return true
+  else
+    _NOTIFICATIONS = lib.candroid.notification.getList()
+    if _NOTIFICATIONS[app] then
+      fsEAPI.clearChilds(items.mainSB)
+      context1 = {
+        {
+          text = "Go Back",
+          bg = colors.gray,
+          fg = colors.white,
+        },
+        {
+          text = "Clear",
+          bg = colors.gray,
+          fg = colors.red,
+        },
+      }
+      items.info.text = app
+      fsEAPI.addContextMenu(items.mainSB, context1)
+      for child, a in pairs(_NOTIFICATIONS[app]) do
+        fsEAPI.addChild(items.mainSB, a)
+      end
+      fsEAPI.updateAll(items, colors.white)
+      return true
+    else
+      return false
+    end
+  end
+end
+
+--code
+
+local c1 = coroutine.create(fsEAPI.run)
+coroutine.resume(c1, items)
+local evt = {}
+while true do
+  coroutine.resume(c1, unpack(evt))
+  evt = {os.pullEvent()}
+  if evt[1] == "app_notification" then
+    local ok = refreshNotifications()
+    if not ok then
+      os.queueEvent("app_crash", "Unknown error")
+      app.exit()
+    end
+  end
+  if evt[1] == "context_select" then
+    local file = fs.open("/log","a")
+    file.writeLine("notifier: "..tostring(evt[4]))
+    file.close()
+  end
+  if not app.isMinimized() and evt[1] == "context_select" and not inApp and evt[4] == "Select" then
+    inApp = items.mainSB.childs[evt[3]].text
+    refreshNotifications(inApp)
+  elseif not app.isMinimized() and evt[1] == "context_select" and inApp and evt[4] == "Go Back" then
+    inApp = false
+    refreshNotifications()
+  elseif not app.isMinimized() and evt[1] == "context_select" and inApp and evt[4] == "Clear" then
+    lib.candroid.notification.clearApp(inApp)
+    refreshNotifications(inApp)
+  elseif not app.isMinimized() and evt[1] == "context_select" and not inApp and evt[4] == "Clear" then
+    lib.candroid.notification.clearAll()
+    refreshNotifications()
+  elseif evt[1] == "craftAndroid_back" and inApp then
+    inApp = false
+    refreshNotifications()
+  end
+end

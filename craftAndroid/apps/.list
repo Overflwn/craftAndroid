@@ -15,4 +15,12 @@
     type = "system",
     size = 0,
   },
+  notifier = {
+    type = "system",
+    size = 0,
+  },
+  testapp = {
+    type = "user",
+    size = 0,
+  }
 }

@@ -335,5 +335,8 @@ while true do
   elseif ev == "app_crash" then
     lib.craftAndroid.displayCrash(btn)
     lib.craftAndroid.goHome()
+    local file = fs.open("/log/"..os.time(), "w")
+    file.writeLine(btn)
+    file.close()
   end
 end

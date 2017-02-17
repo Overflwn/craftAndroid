@@ -113,6 +113,7 @@ local function addApp(appName, visible)
     local self = {}
     self.window = window.create(mainTerm, 1, 1, maxX, maxY-1)
     self.dead = false
+    self.name = appName
     env.term.native = function()
       return self.window
     end
@@ -121,13 +122,23 @@ local function addApp(appName, visible)
         term.redirect(originalTerm)
         self.dead = true
         self.coroutine = nil
-      end
+      end,
     }
+    --[[env.lib.candroid.notification.notify = function(message)
+      return lib.candroid.notification.notify(self.name, message)
+    end]]
     setfenv(prog, env)
     self.coroutine = coroutine.create(prog)
     self.filter = ""
     self.type = list[appName].type
     self.isVisible = visible
+    env.app.isMinimized = function()
+      if self.isVisible then
+        return false
+      else
+        return true
+      end
+    end
     if self.isVisible then
       turnInvisible()
     end
@@ -295,6 +306,10 @@ local function initiateOS()
   if not ok then
     _flag("STATE_CRASHED", "Launcher: "..err)
   end
+  local ok, err = craftAndroid.taskmanager.runApp("notifier", false)
+  if not ok then
+    _flag("STATE_CRASHED", "notifier: "..err)
+  end
   local evt = {}
 
   while true do
@@ -315,10 +330,12 @@ local function initiateOS()
         --if the task is in the background, don't pass keyboard and mouse events over
         local t = {"key", "paste", "terminate", "mouse"}
         local found = false
-        for each, var in ipairs(t) do
-          if string.find(evt[1], var) then
-            found = true
-            break
+        if evt[1] ~= nil then
+          for each, var in ipairs(t) do
+            if string.find(evt[1], var) then
+              found = true
+              break
+            end
           end
         end
         if found and not _crashed then
