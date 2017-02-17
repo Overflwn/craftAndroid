@@ -116,11 +116,6 @@ while true do
       app.exit()
     end
   end
-  if evt[1] == "context_select" then
-    local file = fs.open("/log","a")
-    file.writeLine("notifier: "..tostring(evt[4]))
-    file.close()
-  end
   if not app.isMinimized() and evt[1] == "context_select" and not inApp and evt[4] == "Select" then
     inApp = items.mainSB.childs[evt[3]].text
     refreshNotifications(inApp)

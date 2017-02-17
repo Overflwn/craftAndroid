@@ -127,6 +127,42 @@ local function addApp(appName, visible)
     --[[env.lib.candroid.notification.notify = function(message)
       return lib.candroid.notification.notify(self.name, message)
     end]]
+    local tAPIsLoading = {}
+    function env.os.loadAPI( _sPath )
+        local sName = fs.getName( _sPath )
+        if tAPIsLoading[sName] == true then
+            printError( "API "..sName.." is already being loaded" )
+            return false
+        end
+        tAPIsLoading[sName] = true
+
+        local tEnv = {}
+        setmetatable( tEnv, { __index = env } )
+        local fnAPI, err = loadfile( _sPath, tEnv )
+        if fnAPI then
+            local ok, err = pcall( fnAPI )
+            if not ok then
+                printError( err )
+                tAPIsLoading[sName] = nil
+                return false
+            end
+        else
+            printError( err )
+            tAPIsLoading[sName] = nil
+            return false
+        end
+
+        local tAPI = {}
+        for k,v in pairs( tEnv ) do
+            if k ~= "_ENV" then
+                tAPI[k] =  v
+            end
+        end
+
+        env[sName] = tAPI
+        tAPIsLoading[sName] = nil
+        return true
+    end
     setfenv(prog, env)
     self.coroutine = coroutine.create(prog)
     self.filter = ""
@@ -139,6 +175,7 @@ local function addApp(appName, visible)
         return true
       end
     end
+
     if self.isVisible then
       turnInvisible()
     end
@@ -159,6 +196,9 @@ local function addApp(appName, visible)
         local _, ok, fltr = pcall(coroutine.resume, self.coroutine, unpack(args))
         if not _ or not ok then
           lib.candroid.notification.notify("app_crash", self.name)
+          local file = fs.open("/log/"..os.time(), "w")
+          file.writeLine("App: "..self.name..", crashed: ".."could run?"..tostring(ok).."; Error: "..tostring(fltr))
+          file.close()
           term.redirect(originalTerm)
           self.dead = true
           return false, (ok or fltr)
@@ -306,10 +346,8 @@ local function initiateOS()
   if not ok then
     _flag("STATE_CRASHED", "Launcher: "..err)
   end
-  local ok, err = craftAndroid.taskmanager.runApp("notifier", false)
-  if not ok then
-    _flag("STATE_CRASHED", "notifier: "..err)
-  end
+  craftAndroid.goHome()
+
   local evt = {}
 
   while true do
@@ -323,8 +361,8 @@ local function initiateOS()
           else
             os.queueEvent("app_crash", tostring(err))
             craftAndroid.taskmanager.tasklist[each].dead = true
-            table.insert(killtab, each)
           end
+          table.insert(killtab, each)
         end
       elseif not task.dead and not task.isVisible then
         --if the task is in the background, don't pass keyboard and mouse events over
@@ -344,6 +382,7 @@ local function initiateOS()
             if task.type == "system" then
               printError(err)
             end
+            table.insert(killtab, each)
           end
         else
           local ok, err = craftAndroid.taskmanager.tasklist[each].resume(evt)
@@ -351,8 +390,8 @@ local function initiateOS()
             if task.type == "system" then
               printError(err)
             end
+            table.insert(killtab, each)
           end
-
         end
       else
         table.insert(killtab, each)

@@ -79,7 +79,7 @@ end
 local c1 = coroutine.create(fsEAPI.run)
 coroutine.resume(c1, items)
 local evt = {}
-while true do
+while not app.isMinimized() do
   coroutine.resume(c1, unpack(evt))
   evt = {os.pullEvent()}
   if evt[1] == "key" and evt[2] == keys.delete then
@@ -128,3 +128,5 @@ while true do
     end
   end
 end
+
+app.exit()

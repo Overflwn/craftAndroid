@@ -202,7 +202,6 @@ buttons.backButton.redraw()
 buttons.forthButton.redraw()
 
 
-
 while true do
   --main loop, basically catches crashes and waits for mouse input
   local ev, btn, x, y = os.pullEvent()
